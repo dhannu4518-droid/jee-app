@@ -1,0 +1,882 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>JEE Warrior Tracker</title>
+<meta name="theme-color" content="#0a0e14" />
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  html, body { background:#020617; }
+  * { -webkit-tap-highlight-color: transparent; }
+  ::-webkit-scrollbar { display:none; }
+  .no-scrollbar::-webkit-scrollbar { display:none; }
+  input, select, textarea { font-size:16px; }
+  @media print {
+    #bottomnav, #modalOverlay { display:none !important; }
+  }
+</style>
+</head>
+<body class="bg-slate-950 text-slate-100">
+
+<div id="app" class="max-w-md mx-auto min-h-screen px-4 pt-5 pb-24"></div>
+
+<div id="bottomnav" class="fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur border-t border-slate-800">
+  <div class="max-w-md mx-auto grid grid-cols-5" id="navRow"></div>
+</div>
+
+<div id="modalOverlay" class="hidden fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm">
+  <div class="w-full sm:max-w-md max-h-[85vh] overflow-y-auto bg-slate-950 border border-slate-800 rounded-t-3xl sm:rounded-3xl p-5">
+    <div class="flex items-center justify-between mb-4">
+      <h3 id="modalTitle" class="text-slate-100 font-semibold text-lg"></h3>
+      <button onclick="closeModal()" class="p-1.5 rounded-full bg-slate-900 border border-slate-800 text-slate-400">✕</button>
+    </div>
+    <div id="modalBody"></div>
+  </div>
+</div>
+
+<script>
+/* ============================== DATA ============================== */
+
+const CHAPTERS = {
+  Physics: [
+    "Units & Measurements", "Kinematics", "Laws of Motion", "Work, Energy & Power",
+    "Rotational Motion", "Gravitation", "Properties of Solids", "Properties of Fluids",
+    "Thermal Properties of Matter", "Thermodynamics", "Kinetic Theory of Gases",
+    "Oscillations", "Waves", "Electrostatics", "Current Electricity",
+    "Magnetic Effects of Current", "Magnetism & Matter", "EMI", "Alternating Current",
+    "EM Waves", "Ray Optics", "Wave Optics", "Dual Nature of Matter", "Atoms",
+    "Nuclei", "Semiconductors"
+  ],
+  Chemistry: [
+    "Basic Concepts", "Structure of Atom", "Classification of Elements",
+    "Chemical Bonding", "States of Matter", "Thermodynamics", "Equilibrium",
+    "Redox Reactions", "Hydrogen", "s-Block Elements", "p-Block (Gp 13-14)",
+    "p-Block (Gp 15-18)", "Organic Chemistry Basics", "Hydrocarbons",
+    "Environmental Chemistry", "Solid State", "Solutions", "Electrochemistry",
+    "Chemical Kinetics", "Surface Chemistry", "Isolation of Elements",
+    "d & f Block Elements", "Coordination Compounds", "Haloalkanes & Haloarenes",
+    "Alcohols, Phenols & Ethers", "Aldehydes, Ketones & Acids", "Amines",
+    "Biomolecules", "Polymers", "Chemistry in Everyday Life"
+  ],
+  Mathematics: [
+    "Sets, Relations & Functions", "Complex Numbers", "Quadratic Equations",
+    "Sequences & Series", "Permutations & Combinations", "Binomial Theorem",
+    "Matrices & Determinants", "Straight Lines", "Circles", "Conic Sections",
+    "Trigonometry", "Inverse Trig Functions", "Limits, Continuity & Differentiability",
+    "Differentiation", "Application of Derivatives", "Integration",
+    "Application of Integrals", "Differential Equations", "Vectors",
+    "3D Geometry", "Probability", "Statistics"
+  ]
+};
+const SUBJECTS = ["Physics", "Chemistry", "Mathematics"];
+const SUBJECT_COLOR = { Physics: "#3b82f6", Chemistry: "#f97316", Mathematics: "#22c55e" };
+const QUOTES = [
+  "Discipline today buys freedom tomorrow.",
+  "One more chapter. One more rank.",
+  "Consistency beats intensity every single time.",
+  "Every mock test is a mirror, not a verdict.",
+  "Small wins, stacked daily, become unstoppable momentum.",
+  "The syllabus doesn't care about your mood. Show up anyway.",
+  "Your rank is built in the hours nobody sees.",
+  "Tired is temporary. Regret lasts longer.",
+  "Master the basics; the rank follows.",
+  "Focus on the next 25 minutes, not the next 2 years.",
+  "Revision is where marks are truly won.",
+  "You don't need motivation, you need a routine.",
+  "The gap between average and topper is just repetition.",
+  "Solve today's PYQs like tomorrow's paper depends on it.",
+  "Warriors don't wait for the perfect day to start."
+];
+const BADGES = [
+  { key: "s3", label: "3-Day Spark", type: "streak", value: 3 },
+  { key: "s7", label: "7-Day Fire", type: "streak", value: 7 },
+  { key: "s14", label: "Fortnight Forge", type: "streak", value: 14 },
+  { key: "s30", label: "30-Day Warrior", type: "streak", value: 30 },
+  { key: "s50", label: "50-Day Legend", type: "streak", value: 50 },
+  { key: "h10", label: "10 Hrs Logged", type: "hours", value: 10 },
+  { key: "h50", label: "50 Hrs Logged", type: "hours", value: 50 },
+  { key: "h100", label: "Century of Hours", type: "hours", value: 100 },
+  { key: "h250", label: "250 Hr Grinder", type: "hours", value: 250 },
+  { key: "h500", label: "500 Hr Titan", type: "hours", value: 500 }
+];
+
+function defaultData() {
+  return {
+    settings: {
+      examDate: "2028-01-24",
+      examLabel: "JEE 2028",
+      dailyGoalHours: 6,
+      subjectGoalHours: { Physics: 2, Chemistry: 2, Mathematics: 2 }
+    },
+    sessions: [],
+    revisions: [],
+    pyqDone: {},
+    notes: { diary: [], formulas: [], mistakes: [] }
+  };
+}
+
+/* ============================== HELPERS ============================== */
+
+const pad = (n) => String(n).padStart(2, "0");
+const fmtDate = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const todayStr = () => fmtDate(new Date());
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+const minutesToHM = (mins) => {
+  const h = Math.floor(mins / 60);
+  const m = Math.round(mins % 60);
+  return h <= 0 ? `${m}m` : `${h}h ${m}m`;
+};
+const dayOfYear = (d) => Math.floor((d - new Date(d.getFullYear(), 0, 0)) / 86400000);
+const escapeHtml = (s) => (s || "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+function uniqueStudyDateSet(sessions) {
+  const set = new Set();
+  sessions.forEach((s) => { if (s.duration > 0) set.add(s.date); });
+  return set;
+}
+function currentStreak(sessions) {
+  const dates = uniqueStudyDateSet(sessions);
+  let cursor = new Date();
+  if (!dates.has(fmtDate(cursor))) cursor.setDate(cursor.getDate() - 1);
+  let streak = 0;
+  while (dates.has(fmtDate(cursor))) { streak++; cursor.setDate(cursor.getDate() - 1); }
+  return streak;
+}
+function longestStreak(sessions) {
+  const dates = Array.from(uniqueStudyDateSet(sessions)).sort();
+  if (dates.length === 0) return 0;
+  let best = 1, cur = 1;
+  for (let i = 1; i < dates.length; i++) {
+    const diffDays = Math.round((new Date(dates[i]) - new Date(dates[i - 1])) / 86400000);
+    cur = diffDays === 1 ? cur + 1 : 1;
+    if (cur > best) best = cur;
+  }
+  return best;
+}
+function weeklyConsistency(sessions) {
+  const dates = uniqueStudyDateSet(sessions);
+  let count = 0;
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(); d.setDate(d.getDate() - i);
+    if (dates.has(fmtDate(d))) count++;
+  }
+  return Math.round((count / 7) * 100);
+}
+
+/* ============================== STATE ============================== */
+
+let state = loadState();
+let currentTab = "home";
+let currentSub = { track: "sessions", more: "calendar" };
+let reportRange = "weekly";
+let pyqFilter = "Physics";
+let notesCat = "diary";
+let calCursor = new Date();
+let calSelected = null;
+let saveErrorMsg = "";
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem("jeeWarriorData");
+    if (!raw) return defaultData();
+    const parsed = JSON.parse(raw);
+    return { ...defaultData(), ...parsed, settings: { ...defaultData().settings, ...(parsed.settings || {}) } };
+  } catch (e) { return defaultData(); }
+}
+function saveState() {
+  try { localStorage.setItem("jeeWarriorData", JSON.stringify(state)); saveErrorMsg = ""; }
+  catch (e) { saveErrorMsg = "Couldn't save — storage might be full or blocked."; }
+}
+
+/* -------- actions -------- */
+function addSession(s) { state.sessions.push({ id: uid(), createdAt: Date.now(), ...s }); saveState(); }
+function deleteSession(id) { state.sessions = state.sessions.filter((s) => s.id !== id); saveState(); render(); }
+function addRevision(r) { state.revisions.push({ id: uid(), completed: false, ...r }); saveState(); }
+function toggleRevision(id) { state.revisions = state.revisions.map((r) => r.id === id ? { ...r, completed: !r.completed, completedAt: Date.now() } : r); saveState(); render(); }
+function deleteRevision(id) { state.revisions = state.revisions.filter((r) => r.id !== id); saveState(); render(); }
+function togglePYQ(key) { state.pyqDone[key] = !state.pyqDone[key]; saveState(); render(); }
+function addNote(cat, n) { state.notes[cat].push({ id: uid(), ...n }); saveState(); }
+function deleteNote(cat, id) { state.notes[cat] = state.notes[cat].filter((n) => n.id !== id); saveState(); render(); }
+function updateSettings(patch) { state.settings = { ...state.settings, ...patch }; saveState(); render(); }
+
+/* ============================== UI HELPERS ============================== */
+
+function card(inner, extra = "") {
+  return `<div class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 mb-3 ${extra}">${inner}</div>`;
+}
+function sectionTitle(icon, text) {
+  return `<div class="flex items-center gap-2 text-slate-200 font-semibold mb-3"><span class="text-orange-500">${icon}</span><span>${text}</span></div>`;
+}
+function pill(label, active, onclick) {
+  return `<button onclick="${onclick}" class="px-3 py-1.5 rounded-full text-sm font-medium border whitespace-nowrap ${active ? "bg-blue-600 border-blue-500 text-white" : "bg-slate-900 border-slate-700 text-slate-400"}">${label}</button>`;
+}
+function progressBar(pct, colorHex) {
+  pct = Math.min(100, Math.max(0, pct || 0));
+  return `<div class="w-full h-2 rounded-full bg-slate-800 overflow-hidden"><div class="h-full rounded-full" style="width:${pct}%;background:${colorHex}"></div></div>`;
+}
+function chipSelect(options, value, onChangeFn) {
+  return `<div class="flex gap-2 overflow-x-auto no-scrollbar pb-1">${options.map((o) => `<button onclick="${onChangeFn}('${o.replace(/'/g, "\\'")}')" class="px-3 py-2 rounded-xl text-xs border whitespace-nowrap ${o === value ? "bg-blue-600/20 border-blue-500 text-blue-400 font-semibold" : "bg-slate-900 border-slate-700 text-slate-400"}">${o}</button>`).join("")}</div>`;
+}
+function openModal(title, bodyHtml) {
+  document.getElementById("modalTitle").textContent = title;
+  document.getElementById("modalBody").innerHTML = bodyHtml;
+  document.getElementById("modalOverlay").classList.remove("hidden");
+}
+function closeModal() { document.getElementById("modalOverlay").classList.add("hidden"); }
+
+function setTab(t) { currentTab = t; render(); }
+function setSub(section, val) { currentSub[section] = val; render(); }
+
+/* ============================== SCREEN: HOME ============================== */
+
+function renderHome() {
+  const now = new Date();
+  const quote = QUOTES[dayOfYear(now) % QUOTES.length];
+  const examTarget = new Date(state.settings.examDate + "T00:00:00");
+  const diff = examTarget - now;
+  const past = diff < 0;
+  const totalSec = Math.max(0, Math.floor(diff / 1000));
+  const days = Math.floor(totalSec / 86400);
+  const hours = Math.floor((totalSec % 86400) / 3600);
+  const mins = Math.floor((totalSec % 3600) / 60);
+  const secs = totalSec % 60;
+
+  const todaySessions = state.sessions.filter((s) => s.date === todayStr());
+  const todayMinutes = todaySessions.reduce((a, s) => a + s.duration, 0);
+  const streak = currentStreak(state.sessions);
+
+  const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate() - 6);
+  const weekMinutes = state.sessions.filter((s) => new Date(s.date) >= new Date(fmtDate(weekAgo))).reduce((a, s) => a + s.duration, 0);
+  const weeklyTargetMin = state.settings.dailyGoalHours * 60 * 7;
+  const weekPct = weeklyTargetMin > 0 ? (weekMinutes / weeklyTargetMin) * 100 : 0;
+
+  return `
+    <div>
+      <p class="text-slate-500 text-sm">${now.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}</p>
+      <div class="flex items-center justify-between mt-1 mb-4">
+        <h1 class="text-2xl font-bold">Warrior Mode</h1>
+        <div class="flex items-center gap-1.5 bg-orange-500/10 border border-orange-500/30 px-3 py-1.5 rounded-full">
+          <span>🔥</span><span class="text-orange-400 font-bold text-sm">${streak}d</span>
+        </div>
+      </div>
+      ${card(`<p class="text-slate-400 text-sm italic">"${escapeHtml(quote)}"</p>`, "border-blue-900/50")}
+      ${card(`
+        ${sectionTitle("🚀", state.settings.examLabel + " Countdown")}
+        ${past ? `<p class="text-center text-orange-400 font-bold py-4">The exam has arrived. Give it everything.</p>` : `
+        <div class="grid grid-cols-4 gap-2 text-center">
+          ${[["Days", days], ["Hrs", hours], ["Min", mins], ["Sec", secs]].map(([l, v]) => `
+            <div class="bg-slate-950 rounded-xl py-3 border border-slate-800">
+              <div class="text-2xl font-bold text-blue-400">${pad(v)}</div>
+              <div class="text-[11px] text-slate-500 uppercase mt-0.5">${l}</div>
+            </div>`).join("")}
+        </div>`}
+      `)}
+      <div class="grid grid-cols-2 gap-3 mb-3">
+        ${card(`
+          <p class="text-slate-500 text-xs uppercase">Today's Study</p>
+          <p class="text-xl font-bold mt-1">${minutesToHM(todayMinutes)}</p>
+          <p class="text-xs text-slate-500 mt-1">Goal ${state.settings.dailyGoalHours}h</p>
+          <div class="mt-2">${progressBar((todayMinutes / (state.settings.dailyGoalHours * 60)) * 100, "#3b82f6")}</div>
+        `)}
+        ${card(`
+          <p class="text-slate-500 text-xs uppercase">Weekly Target</p>
+          <p class="text-xl font-bold mt-1">${Math.round(weekPct)}%</p>
+          <p class="text-xs text-slate-500 mt-1">${minutesToHM(weekMinutes)} / ${state.settings.dailyGoalHours * 7}h</p>
+          <div class="mt-2">${progressBar(weekPct, "#f97316")}</div>
+        `)}
+      </div>
+      <div class="grid grid-cols-3 gap-3">
+        <button onclick="setTab('timer')" class="flex flex-col items-center gap-1.5 bg-blue-600 rounded-2xl py-3.5 text-white"><span>▶️</span><span class="text-xs font-medium">Start Timer</span></button>
+        <button onclick="setTab('track')" class="flex flex-col items-center gap-1.5 bg-slate-900 border border-slate-700 rounded-2xl py-3.5"><span>➕</span><span class="text-xs font-medium">Add Session</span></button>
+        <button onclick="setTab('reports')" class="flex flex-col items-center gap-1.5 bg-slate-900 border border-slate-700 rounded-2xl py-3.5"><span>📊</span><span class="text-xs font-medium">Reports</span></button>
+      </div>
+    </div>
+  `;
+}
+
+/* ============================== SCREEN: TIMER ============================== */
+
+let timerState = { mode: "stopwatch", phase: "study", running: false, elapsed: 0, subject: "Physics", chapter: CHAPTERS.Physics[0], customStudy: 45, customBreak: 10, studiedAccum: 0 };
+let timerInterval = null;
+
+function timerDurationFor(m) { return m === "pomo25" ? 25 : m === "pomo50" ? 50 : m === "custom" ? Number(timerState.customStudy) || 1 : null; }
+function timerBreakFor(m) { return m === "pomo25" ? 5 : m === "pomo50" ? 10 : m === "custom" ? Number(timerState.customBreak) || 1 : null; }
+
+function setTimerMode(m) { timerState.mode = m; resetTimer(); }
+function setTimerSubject(s) { timerState.subject = s; timerState.chapter = CHAPTERS[s][0]; render(); }
+function setTimerChapter(c) { timerState.chapter = c; render(); }
+function setTimerCustom(field, val) { timerState[field] = val; }
+
+function startPauseTimer() {
+  timerState.running = !timerState.running;
+  if (timerState.running) {
+    timerInterval = setInterval(tick, 1000);
+  } else {
+    clearInterval(timerInterval);
+  }
+  render();
+}
+function tick() {
+  timerState.elapsed++;
+  if (timerState.mode !== "stopwatch") {
+    const limitMin = timerState.phase === "study" ? timerDurationFor(timerState.mode) : timerBreakFor(timerState.mode);
+    if (timerState.elapsed >= limitMin * 60) {
+      if (timerState.phase === "study") {
+        timerState.studiedAccum += timerState.elapsed;
+        timerState.phase = "break";
+      } else {
+        timerState.phase = "study";
+      }
+      timerState.elapsed = 0;
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const o = ctx.createOscillator(), g = ctx.createGain();
+        o.connect(g); g.connect(ctx.destination);
+        o.frequency.value = 880; g.gain.value = 0.1; o.start();
+        setTimeout(() => { o.stop(); ctx.close(); }, 300);
+      } catch (e) {}
+    }
+  }
+  if (currentTab === "timer") render();
+}
+function resetTimer() {
+  clearInterval(timerInterval);
+  timerState.running = false; timerState.elapsed = 0; timerState.phase = "study"; timerState.studiedAccum = 0;
+  render();
+}
+function finishTimer() {
+  clearInterval(timerInterval);
+  timerState.running = false;
+  const studySeconds = timerState.mode === "stopwatch" ? timerState.elapsed : timerState.studiedAccum + (timerState.phase === "study" ? timerState.elapsed : 0);
+  if (studySeconds < 30) { resetTimer(); return; }
+  openModal("Save Session", `
+    <p class="text-sm text-slate-400 mb-2">${timerState.subject} · ${timerState.chapter}</p>
+    <textarea id="sessionNotesInput" rows="3" placeholder="Notes (optional)" class="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2.5 text-slate-100 placeholder-slate-500 outline-none"></textarea>
+    <button onclick="confirmSaveTimerSession()" class="w-full mt-3 bg-blue-600 text-white rounded-xl py-3 font-medium">Save Session</button>
+  `);
+}
+function confirmSaveTimerSession() {
+  const notes = document.getElementById("sessionNotesInput").value;
+  const studySeconds = timerState.mode === "stopwatch" ? timerState.elapsed : timerState.studiedAccum + (timerState.phase === "study" ? timerState.elapsed : 0);
+  const mins = Math.max(1, Math.round(studySeconds / 60));
+  addSession({ date: todayStr(), subject: timerState.subject, chapter: timerState.chapter, duration: mins, notes });
+  closeModal();
+  resetTimer();
+}
+
+function renderTimer() {
+  const displaySeconds = timerState.mode === "stopwatch"
+    ? timerState.elapsed
+    : Math.max(0, (timerState.phase === "study" ? timerDurationFor(timerState.mode) : timerBreakFor(timerState.mode)) * 60 - timerState.elapsed);
+  const hh = pad(Math.floor(displaySeconds / 3600)), mm = pad(Math.floor((displaySeconds % 3600) / 60)), ss = pad(displaySeconds % 60);
+
+  return `
+    <div>
+      <h1 class="text-2xl font-bold mb-3">Study Timer</h1>
+      <div class="flex gap-2 flex-wrap mb-3">
+        ${pill("Stopwatch", timerState.mode === "stopwatch", "setTimerMode('stopwatch')")}
+        ${pill("25 / 5", timerState.mode === "pomo25", "setTimerMode('pomo25')")}
+        ${pill("50 / 10", timerState.mode === "pomo50", "setTimerMode('pomo50')")}
+        ${pill("Custom", timerState.mode === "custom", "setTimerMode('custom')")}
+      </div>
+      ${timerState.mode === "custom" ? card(`
+        <div class="flex gap-3">
+          <div class="flex-1"><label class="text-xs text-slate-500">Study (min)</label>
+            <input type="number" value="${timerState.customStudy}" oninput="setTimerCustom('customStudy', this.value)" class="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-slate-100"/></div>
+          <div class="flex-1"><label class="text-xs text-slate-500">Break (min)</label>
+            <input type="number" value="${timerState.customBreak}" oninput="setTimerCustom('customBreak', this.value)" class="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-slate-100"/></div>
+        </div>
+      `) : ""}
+      ${card(`
+        <label class="text-xs text-slate-500">Subject</label>
+        ${chipSelect(SUBJECTS, timerState.subject, "setTimerSubject")}
+        <label class="text-xs text-slate-500 mt-2 block">Chapter</label>
+        ${chipSelect(CHAPTERS[timerState.subject], timerState.chapter, "setTimerChapter")}
+        ${timerState.mode !== "stopwatch" ? `<p class="text-center text-xs uppercase tracking-widest mt-4 font-bold" style="color:${timerState.phase === "study" ? "#3b82f6" : "#22c55e"}">${timerState.phase === "study" ? "Focus Phase" : "Break Phase"}</p>` : ""}
+        <div class="text-center py-8"><span class="text-6xl font-bold">${hh}:${mm}:${ss}</span></div>
+        <div class="flex items-center justify-center gap-4">
+          <button onclick="resetTimer()" class="p-4 rounded-full bg-slate-800 text-slate-300 text-xl">↺</button>
+          <button onclick="startPauseTimer()" class="p-5 rounded-full bg-blue-600 text-white text-2xl">${timerState.running ? "⏸" : "▶️"}</button>
+          <button onclick="finishTimer()" class="p-4 rounded-full bg-orange-600 text-white text-xl">✔️</button>
+        </div>
+        <p class="text-center text-xs text-slate-600 mt-3">Tap ✔️ to finish & save this session</p>
+      `)}
+    </div>
+  `;
+}
+
+/* ============================== SCREEN: TRACK ============================== */
+
+function renderTrack() {
+  return `
+    <div>
+      <h1 class="text-2xl font-bold mb-3">Study Tracker</h1>
+      <div class="flex gap-2 overflow-x-auto no-scrollbar mb-3">
+        ${pill("Sessions", currentSub.track === "sessions", "setSub('track','sessions')")}
+        ${pill("Goals", currentSub.track === "goals", "setSub('track','goals')")}
+        ${pill("Revision", currentSub.track === "revision", "setSub('track','revision')")}
+        ${pill("PYQ", currentSub.track === "pyq", "setSub('track','pyq')")}
+      </div>
+      ${currentSub.track === "sessions" ? renderSessionsTab() : ""}
+      ${currentSub.track === "goals" ? renderGoalsTab() : ""}
+      ${currentSub.track === "revision" ? renderRevisionTab() : ""}
+      ${currentSub.track === "pyq" ? renderPYQTab() : ""}
+    </div>
+  `;
+}
+
+function openAddSessionModal() {
+  window._newSession = { subject: "Physics", chapter: CHAPTERS.Physics[0] };
+  renderAddSessionModal();
+}
+function renderAddSessionModal() {
+  const s = window._newSession;
+  openModal("Add Study Session", `
+    <label class="text-xs text-slate-500">Subject</label>
+    ${chipSelect(SUBJECTS, s.subject, "newSessionSetSubject")}
+    <label class="text-xs text-slate-500 mt-2 block">Chapter</label>
+    ${chipSelect(CHAPTERS[s.subject], s.chapter, "newSessionSetChapter")}
+    <label class="text-xs text-slate-500 mt-2 block">Duration (minutes)</label>
+    <input id="newSessionDuration" type="number" value="30" class="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2.5 text-slate-100 mb-2"/>
+    <label class="text-xs text-slate-500">Notes</label>
+    <textarea id="newSessionNotes" rows="2" placeholder="What did you cover?" class="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2.5 text-slate-100"></textarea>
+    <button onclick="saveNewSession()" class="w-full mt-3 bg-blue-600 text-white rounded-xl py-3 font-medium">Save</button>
+  `);
+}
+function newSessionSetSubject(s) { window._newSession.subject = s; window._newSession.chapter = CHAPTERS[s][0]; renderAddSessionModal(); }
+function newSessionSetChapter(c) { window._newSession.chapter = c; renderAddSessionModal(); }
+function saveNewSession() {
+  const s = window._newSession;
+  const duration = Number(document.getElementById("newSessionDuration").value) || 0;
+  const notes = document.getElementById("newSessionNotes").value;
+  addSession({ date: todayStr(), subject: s.subject, chapter: s.chapter, duration, notes });
+  closeModal(); render();
+}
+
+function renderSessionsTab() {
+  const recent = [...state.sessions].sort((a, b) => b.createdAt - a.createdAt).slice(0, 25);
+  return `
+    <button onclick="openAddSessionModal()" class="w-full flex items-center justify-center gap-2 bg-blue-600 text-white rounded-xl py-3 font-medium mb-3">➕ Add Study Session</button>
+    ${recent.length === 0 ? `<p class="text-slate-500 text-sm text-center py-6">No sessions yet. Log your first one.</p>` : ""}
+    ${recent.map((s) => card(`
+      <div class="flex items-start justify-between">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full" style="background:${SUBJECT_COLOR[s.subject]}"></span>
+            <p class="font-medium text-sm">${s.subject} · ${escapeHtml(s.chapter)}</p>
+          </div>
+          <p class="text-xs text-slate-500 mt-1">${s.date} · ${minutesToHM(s.duration)}</p>
+          ${s.notes ? `<p class="text-xs text-slate-400 mt-1 italic">"${escapeHtml(s.notes)}"</p>` : ""}
+        </div>
+        <button onclick="deleteSession('${s.id}')" class="text-slate-600 p-1">🗑</button>
+      </div>
+    `)).join("")}
+  `;
+}
+
+function renderGoalsTab() {
+  const s = state.settings;
+  const todaySessions = state.sessions.filter((x) => x.date === todayStr());
+  const bySubject = (subj) => todaySessions.filter((x) => x.subject === subj).reduce((a, b) => a + b.duration, 0);
+  return `
+    ${card(`
+      ${sectionTitle("🎯", "Daily Goal")}
+      <div class="flex items-center gap-3">
+        <input type="number" value="${s.dailyGoalHours}" onchange="updateSettings({dailyGoalHours: Number(this.value)||0})" class="w-24 rounded-xl bg-slate-900 border border-slate-700 px-3 py-2.5 text-slate-100"/>
+        <span class="text-slate-500 text-sm">hours / day</span>
+      </div>
+    `)}
+    ${card(`
+      ${sectionTitle("📋", "Subject-wise Targets")}
+      ${SUBJECTS.map((subj) => {
+        const goalMin = (s.subjectGoalHours[subj] || 0) * 60;
+        const doneMin = bySubject(subj);
+        const pct = goalMin > 0 ? (doneMin / goalMin) * 100 : 0;
+        return `
+          <div class="mb-4">
+            <div class="flex items-center justify-between text-sm mb-1">
+              <span class="font-medium">${subj}</span>
+              <span class="text-slate-500">${minutesToHM(doneMin)} / ${s.subjectGoalHours[subj]}h</span>
+            </div>
+            ${progressBar(pct, SUBJECT_COLOR[subj])}
+            <div class="flex items-center gap-2 mt-1.5">
+              <input type="number" step="0.5" value="${s.subjectGoalHours[subj]}" onchange="updateSubjectGoal('${subj}', this.value)" class="w-20 rounded-xl bg-slate-900 border border-slate-700 px-2 py-1.5 text-sm text-slate-100"/>
+              <span class="text-xs text-slate-600">target hrs</span>
+            </div>
+          </div>
+        `;
+      }).join("")}
+    `)}
+  `;
+}
+function updateSubjectGoal(subj, val) {
+  updateSettings({ subjectGoalHours: { ...state.settings.subjectGoalHours, [subj]: Number(val) || 0 } });
+}
+
+function openRevisionModal() {
+  window._newRevision = { subject: "Physics", chapter: CHAPTERS.Physics[0], date: todayStr() };
+  renderRevisionModal();
+}
+function renderRevisionModal() {
+  const r = window._newRevision;
+  openModal("Schedule Revision", `
+    <label class="text-xs text-slate-500">Subject</label>
+    ${chipSelect(SUBJECTS, r.subject, "newRevisionSetSubject")}
+    <label class="text-xs text-slate-500 mt-2 block">Chapter</label>
+    ${chipSelect(CHAPTERS[r.subject], r.chapter, "newRevisionSetChapter")}
+    <label class="text-xs text-slate-500 mt-2 block">Revision Date</label>
+    <input id="newRevisionDate" type="date" value="${r.date}" class="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2.5 text-slate-100"/>
+    <button onclick="saveNewRevision()" class="w-full mt-3 bg-blue-600 text-white rounded-xl py-3 font-medium">Schedule</button>
+  `);
+}
+function newRevisionSetSubject(s) { window._newRevision.subject = s; window._newRevision.chapter = CHAPTERS[s][0]; renderRevisionModal(); }
+function newRevisionSetChapter(c) { window._newRevision.chapter = c; renderRevisionModal(); }
+function saveNewRevision() {
+  const r = window._newRevision;
+  const date = document.getElementById("newRevisionDate").value || todayStr();
+  addRevision({ subject: r.subject, chapter: r.chapter, scheduledDate: date });
+  closeModal(); render();
+}
+
+function renderRevisionTab() {
+  const pending = state.revisions.filter((r) => !r.completed).sort((a, b) => a.scheduledDate.localeCompare(b.scheduledDate));
+  const done = state.revisions.filter((r) => r.completed).sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
+  return `
+    <button onclick="openRevisionModal()" class="w-full flex items-center justify-center gap-2 bg-blue-600 text-white rounded-xl py-3 font-medium mb-3">➕ Schedule Revision</button>
+    ${sectionTitle("⏰", `Pending (${pending.length})`)}
+    ${pending.length === 0 ? `<p class="text-slate-600 text-sm mb-3">Nothing pending. Nice work.</p>` : ""}
+    ${pending.map((r) => {
+      const overdue = r.scheduledDate < todayStr();
+      return card(`
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-sm font-medium">${r.subject} · ${escapeHtml(r.chapter)}</p>
+            <p class="text-xs mt-0.5 ${overdue ? "text-red-400" : "text-slate-500"}">${overdue ? "Overdue · " : ""}Due ${r.scheduledDate}</p>
+          </div>
+          <div class="flex items-center gap-3">
+            <button onclick="toggleRevision('${r.id}')" class="text-emerald-500 text-xl">✔️</button>
+            <button onclick="deleteRevision('${r.id}')" class="text-slate-600">🗑</button>
+          </div>
+        </div>
+      `, overdue ? "border-red-900/50" : "");
+    }).join("")}
+    ${sectionTitle("✅", `Completed (${done.length})`)}
+    ${done.slice(0, 10).map((r) => card(`
+      <div class="flex items-center justify-between opacity-60">
+        <p class="text-sm line-through">${r.subject} · ${escapeHtml(r.chapter)}</p>
+        <button onclick="deleteRevision('${r.id}')" class="text-slate-600">🗑</button>
+      </div>
+    `)).join("")}
+  `;
+}
+
+function setPyqFilter(s) { pyqFilter = s; render(); }
+
+function renderPYQTab() {
+  const chapters = CHAPTERS[pyqFilter];
+  const doneCount = chapters.filter((c) => state.pyqDone[`${pyqFilter}::${c}`]).length;
+  const pct = Math.round((doneCount / chapters.length) * 100);
+  const overallDone = SUBJECTS.reduce((a, s) => a + CHAPTERS[s].filter((c) => state.pyqDone[`${s}::${c}`]).length, 0);
+  const overallTotal = SUBJECTS.reduce((a, s) => a + CHAPTERS[s].length, 0);
+  return `
+    ${card(`
+      <div class="flex items-center justify-between mb-1"><span class="text-slate-300 text-sm font-medium">Overall PYQ Completion</span><span class="font-bold">${Math.round((overallDone / overallTotal) * 100)}%</span></div>
+      ${progressBar((overallDone / overallTotal) * 100, "#f97316")}
+    `)}
+    <div class="flex gap-2 mb-3">${SUBJECTS.map((s) => pill(s, pyqFilter === s, `setPyqFilter('${s}')`)).join("")}</div>
+    ${card(`
+      <div class="flex items-center justify-between mb-2"><span class="text-sm text-slate-400">${pyqFilter} chapters completed</span><span class="text-sm font-semibold" style="color:${SUBJECT_COLOR[pyqFilter]}">${doneCount}/${chapters.length} (${pct}%)</span></div>
+      ${progressBar(pct, SUBJECT_COLOR[pyqFilter])}
+    `)}
+    <div class="space-y-2">
+      ${chapters.map((c) => {
+        const key = `${pyqFilter}::${c}`;
+        const done = !!state.pyqDone[key];
+        return `<button onclick="togglePYQ('${key.replace(/'/g, "\\'")}')" class="w-full flex items-center gap-3 bg-slate-900/60 border border-slate-800 rounded-xl px-3 py-2.5 mb-2">
+          <span>${done ? "✅" : "⭕"}</span>
+          <span class="text-sm text-left ${done ? "text-slate-500 line-through" : "text-slate-200"}">${c}</span>
+        </button>`;
+      }).join("")}
+    </div>
+  `;
+}
+
+/* ============================== SCREEN: REPORTS ============================== */
+
+function setReportRange(r) { reportRange = r; render(); }
+
+function renderReports() {
+  const days = reportRange === "daily" ? 1 : reportRange === "weekly" ? 7 : 30;
+  const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - (days - 1));
+  const inRange = state.sessions.filter((s) => new Date(s.date) >= new Date(fmtDate(cutoff)));
+  const totalMin = inRange.reduce((a, s) => a + s.duration, 0);
+  const subjectMax = Math.max(1, ...SUBJECTS.map((s) => inRange.filter((x) => x.subject === s).reduce((a, b) => a + b.duration, 0)));
+
+  const trendDays = reportRange === "monthly" ? 30 : 7;
+  const trend = [];
+  for (let i = trendDays - 1; i >= 0; i--) {
+    const d = new Date(); d.setDate(d.getDate() - i);
+    const ds = fmtDate(d);
+    const mins = state.sessions.filter((s) => s.date === ds).reduce((a, b) => a + b.duration, 0);
+    trend.push({ label: d.toLocaleDateString(undefined, { day: "numeric", month: "short" }), mins });
+  }
+  const trendMax = Math.max(1, ...trend.map((t) => t.mins));
+
+  const longest = longestStreak(state.sessions);
+  const consistency = weeklyConsistency(state.sessions);
+  const totalHoursAllTime = (state.sessions.reduce((a, s) => a + s.duration, 0) / 60).toFixed(1);
+
+  return `
+    <div>
+      <h1 class="text-2xl font-bold mb-3">Reports</h1>
+      <div class="flex gap-2 mb-3">
+        ${pill("Daily", reportRange === "daily", "setReportRange('daily')")}
+        ${pill("Weekly", reportRange === "weekly", "setReportRange('weekly')")}
+        ${pill("Monthly", reportRange === "monthly", "setReportRange('monthly')")}
+      </div>
+      <div class="grid grid-cols-3 gap-3 mb-1">
+        ${card(`<p class="text-xs text-slate-500 text-center">Total</p><p class="text-lg font-bold text-blue-400 text-center mt-1">${minutesToHM(totalMin)}</p>`)}
+        ${card(`<p class="text-xs text-slate-500 text-center">Longest Streak</p><p class="text-lg font-bold text-orange-400 text-center mt-1">${longest}d</p>`)}
+        ${card(`<p class="text-xs text-slate-500 text-center">Consistency</p><p class="text-lg font-bold text-emerald-400 text-center mt-1">${consistency}%</p>`)}
+      </div>
+      ${card(`
+        ${sectionTitle("📊", "Subject-wise Time")}
+        <div class="flex items-end justify-around gap-3" style="height:140px">
+          ${SUBJECTS.map((s) => {
+            const mins = inRange.filter((x) => x.subject === s).reduce((a, b) => a + b.duration, 0);
+            const h = Math.max(4, (mins / subjectMax) * 120);
+            return `<div class="flex flex-col items-center gap-1 flex-1">
+              <span class="text-[10px] text-slate-400">${minutesToHM(mins)}</span>
+              <div style="height:${h}px;background:${SUBJECT_COLOR[s]}" class="w-full rounded-t-lg"></div>
+              <span class="text-[11px] text-slate-500">${s.slice(0,4)}</span>
+            </div>`;
+          }).join("")}
+        </div>
+      `)}
+      ${card(`
+        ${sectionTitle("📈", `Daily Trend (${trendDays}d)`)}
+        <div class="flex items-end justify-between gap-1" style="height:120px">
+          ${trend.map((t) => `<div class="flex-1 flex flex-col items-center justify-end h-full">
+            <div style="height:${Math.max(3, (t.mins / trendMax) * 100)}px" class="w-full bg-blue-500 rounded-t"></div>
+          </div>`).join("")}
+        </div>
+        <div class="flex justify-between mt-1"><span class="text-[10px] text-slate-600">${trend[0].label}</span><span class="text-[10px] text-slate-600">${trend[trend.length-1].label}</span></div>
+      `)}
+      ${card(`<p class="text-xs text-slate-500 text-center">All-Time Study Hours</p><p class="text-2xl font-bold text-center mt-1">${totalHoursAllTime}h</p>`)}
+    </div>
+  `;
+}
+
+/* ============================== SCREEN: MORE ============================== */
+
+function renderMore() {
+  return `
+    <div>
+      <h1 class="text-2xl font-bold mb-3">More</h1>
+      <div class="flex gap-2 overflow-x-auto no-scrollbar mb-3">
+        ${pill("Calendar", currentSub.more === "calendar", "setSub('more','calendar')")}
+        ${pill("Notes", currentSub.more === "notes", "setSub('more','notes')")}
+        ${pill("Streaks", currentSub.more === "streaks", "setSub('more','streaks')")}
+        ${pill("Settings", currentSub.more === "settings", "setSub('more','settings')")}
+      </div>
+      ${currentSub.more === "calendar" ? renderCalendar() : ""}
+      ${currentSub.more === "notes" ? renderNotes() : ""}
+      ${currentSub.more === "streaks" ? renderStreaks() : ""}
+      ${currentSub.more === "settings" ? renderSettings() : ""}
+    </div>
+  `;
+}
+
+function calNav(delta) { calCursor = new Date(calCursor.getFullYear(), calCursor.getMonth() + delta, 1); render(); }
+function calSelect(d) { calSelected = d; render(); }
+
+function renderCalendar() {
+  const year = calCursor.getFullYear(), month = calCursor.getMonth();
+  const firstDay = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const dayTotals = {};
+  state.sessions.forEach((s) => { dayTotals[s.date] = (dayTotals[s.date] || 0) + s.duration; });
+  const cells = [];
+  for (let i = 0; i < firstDay; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+  const selDate = calSelected ? `${year}-${pad(month + 1)}-${pad(calSelected)}` : null;
+  const selSessions = selDate ? state.sessions.filter((s) => s.date === selDate) : [];
+
+  return `
+    ${card(`
+      <div class="flex items-center justify-between mb-3">
+        <button onclick="calNav(-1)" class="p-1.5 text-slate-400">‹</button>
+        <p class="font-semibold">${calCursor.toLocaleDateString(undefined, { month: "long", year: "numeric" })}</p>
+        <button onclick="calNav(1)" class="p-1.5 text-slate-400">›</button>
+      </div>
+      <div class="grid grid-cols-7 gap-1 text-center text-[11px] text-slate-600 mb-1">${["S","M","T","W","T","F","S"].map((d) => `<div>${d}</div>`).join("")}</div>
+      <div class="grid grid-cols-7 gap-1">
+        ${cells.map((d) => {
+          if (!d) return `<div></div>`;
+          const ds = `${year}-${pad(month + 1)}-${pad(d)}`;
+          const mins = dayTotals[ds] || 0;
+          const isToday = ds === todayStr();
+          const isSel = calSelected === d;
+          return `<button onclick="calSelect(${d})" class="aspect-square rounded-lg flex flex-col items-center justify-center text-xs ${isSel ? "bg-blue-600 text-white" : isToday ? "border border-blue-500" : ""}">
+            ${d}${mins > 0 ? `<span class="w-1 h-1 rounded-full mt-0.5 ${isSel ? "bg-white" : "bg-orange-500"}"></span>` : ""}
+          </button>`;
+        }).join("")}
+      </div>
+    `)}
+    ${calSelected ? card(`
+      <p class="text-sm text-slate-400 mb-2">${selDate} · ${minutesToHM(dayTotals[selDate] || 0)} total</p>
+      ${selSessions.length === 0 ? `<p class="text-slate-600 text-sm">No sessions logged.</p>` : selSessions.map((s) => `
+        <div class="flex items-center gap-2 py-1.5 border-t border-slate-800 first:border-0">
+          <span class="w-2 h-2 rounded-full" style="background:${SUBJECT_COLOR[s.subject]}"></span>
+          <span class="text-sm">${s.subject} · ${escapeHtml(s.chapter)}</span>
+          <span class="text-xs text-slate-500 ml-auto">${minutesToHM(s.duration)}</span>
+        </div>
+      `).join("")}
+    `) : ""}
+  `;
+}
+
+function setNotesCat(c) { notesCat = c; render(); }
+function openNoteModal() {
+  window._newNote = { title: "", content: "" };
+  const labels = { diary: "Study Diary", formulas: "Formula Bank", mistakes: "Mistakes Notebook" };
+  openModal(`New ${labels[notesCat]} Entry`, `
+    <input id="newNoteTitle" placeholder="Title (optional)" class="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2.5 text-slate-100 mb-2"/>
+    <textarea id="newNoteContent" rows="5" placeholder="Write here..." class="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2.5 text-slate-100"></textarea>
+    <button onclick="saveNewNote()" class="w-full mt-3 bg-blue-600 text-white rounded-xl py-3 font-medium">Save Entry</button>
+  `);
+}
+function saveNewNote() {
+  const title = document.getElementById("newNoteTitle").value;
+  const content = document.getElementById("newNoteContent").value;
+  addNote(notesCat, { title, content, date: todayStr() });
+  closeModal(); render();
+}
+
+function renderNotes() {
+  const labels = { diary: "Study Diary", formulas: "Formula Bank", mistakes: "Mistakes Notebook" };
+  const items = [...state.notes[notesCat]].sort((a, b) => b.date.localeCompare(a.date));
+  return `
+    <div class="flex gap-2 mb-3">
+      ${pill("Diary", notesCat === "diary", "setNotesCat('diary')")}
+      ${pill("Formulas", notesCat === "formulas", "setNotesCat('formulas')")}
+      ${pill("Mistakes", notesCat === "mistakes", "setNotesCat('mistakes')")}
+    </div>
+    <button onclick="openNoteModal()" class="w-full flex items-center justify-center gap-2 bg-blue-600 text-white rounded-xl py-3 font-medium mb-3">➕ New ${labels[notesCat]} Entry</button>
+    ${items.length === 0 ? `<p class="text-slate-600 text-sm text-center py-6">No entries yet.</p>` : ""}
+    ${items.map((n) => card(`
+      <div class="flex items-start justify-between">
+        <div>${n.title ? `<p class="font-medium text-sm">${escapeHtml(n.title)}</p>` : ""}<p class="text-xs text-slate-500 mt-0.5">${n.date}</p></div>
+        <button onclick="deleteNote('${notesCat}','${n.id}')" class="text-slate-600">🗑</button>
+      </div>
+      <p class="text-sm text-slate-300 mt-2 whitespace-pre-wrap">${escapeHtml(n.content)}</p>
+    `)).join("")}
+  `;
+}
+
+function renderStreaks() {
+  const streak = currentStreak(state.sessions);
+  const longest = longestStreak(state.sessions);
+  const totalHours = state.sessions.reduce((a, s) => a + s.duration, 0) / 60;
+  return card(`
+    ${sectionTitle("🏆", "Achievements")}
+    <div class="grid grid-cols-2 gap-2 mb-3">
+      <div class="bg-slate-950 rounded-xl p-3 text-center border border-slate-800"><div>🔥</div><p class="text-lg font-bold mt-1">${streak}</p><p class="text-[11px] text-slate-500">Current Streak</p></div>
+      <div class="bg-slate-950 rounded-xl p-3 text-center border border-slate-800"><div>🏆</div><p class="text-lg font-bold mt-1">${longest}</p><p class="text-[11px] text-slate-500">Longest Streak</p></div>
+    </div>
+    <div class="grid grid-cols-4 gap-2">
+      ${BADGES.map((b) => {
+        const unlocked = b.type === "streak" ? longest >= b.value : totalHours >= b.value;
+        return `<div class="flex flex-col items-center text-center p-2 rounded-xl border ${unlocked ? "border-orange-500/40 bg-orange-500/10" : "border-slate-800 bg-slate-950"}">
+          <span>${unlocked ? "🏆" : "🔒"}</span>
+          <span class="text-[9px] mt-1 leading-tight ${unlocked ? "text-orange-300" : "text-slate-600"}">${b.label}</span>
+        </div>`;
+      }).join("")}
+    </div>
+  `);
+}
+
+function exportBackup() {
+  try {
+    const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `jee-warrior-backup-${todayStr()}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  } catch (e) { alert("Export failed: " + e.message); }
+}
+function triggerImport() { document.getElementById("importFileInput").click(); }
+function handleImportFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const parsed = JSON.parse(reader.result);
+      state = { ...defaultData(), ...parsed };
+      saveState(); render();
+      alert("Data restored.");
+    } catch (e) { alert("Invalid backup file."); }
+  };
+  reader.readAsText(file);
+}
+function exportPDF() { window.print(); }
+
+function renderSettings() {
+  const s = state.settings;
+  return `
+    ${card(`
+      ${sectionTitle("🚀", "Exam")}
+      <label class="text-xs text-slate-500">Label</label>
+      <input value="${escapeHtml(s.examLabel)}" onchange="updateSettings({examLabel:this.value})" class="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2.5 text-slate-100 mb-2"/>
+      <label class="text-xs text-slate-500">Exam Date</label>
+      <input type="date" value="${s.examDate}" onchange="updateSettings({examDate:this.value})" class="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2.5 text-slate-100"/>
+    `)}
+    ${card(`
+      ${sectionTitle("⚙️", "Backup & Restore")}
+      <button onclick="exportBackup()" class="w-full flex items-center justify-center gap-2 bg-slate-800 rounded-xl py-2.5 mb-2">⬇️ Export Backup (JSON)</button>
+      <button onclick="triggerImport()" class="w-full flex items-center justify-center gap-2 bg-slate-800 rounded-xl py-2.5 mb-2">⬆️ Restore from Backup</button>
+      <input id="importFileInput" type="file" accept="application/json" class="hidden" onchange="handleImportFile(this)"/>
+      <button onclick="exportPDF()" class="w-full flex items-center justify-center gap-2 bg-slate-800 rounded-xl py-2.5">🖨️ Export Report as PDF</button>
+      <p class="text-[11px] text-slate-600 mt-2">All data is stored locally in this browser. Cloud sync can be added later.</p>
+    `)}
+  `;
+}
+
+/* ============================== NAV + ROOT RENDER ============================== */
+
+const NAV = [
+  { key: "home", label: "Home", icon: "🏠" },
+  { key: "timer", label: "Timer", icon: "⏱️" },
+  { key: "track", label: "Track", icon: "📋" },
+  { key: "reports", label: "Reports", icon: "📊" },
+  { key: "more", label: "More", icon: "☰" }
+];
+
+function renderNav() {
+  document.getElementById("navRow").innerHTML = NAV.map((n) => `
+    <button onclick="setTab('${n.key}')" class="flex flex-col items-center gap-1 py-2.5 ${currentTab === n.key ? "text-blue-400" : "text-slate-500"}">
+      <span class="text-lg leading-none">${n.icon}</span>
+      <span class="text-[10px] font-medium">${n.label}</span>
+    </button>
+  `).join("");
+}
+
+function render() {
+  renderNav();
+  let html = "";
+  if (saveErrorMsg) html += `<p class="text-xs text-red-400 mb-2">${saveErrorMsg}</p>`;
+  if (currentTab === "home") html += renderHome();
+  else if (currentTab === "timer") html += renderTimer();
+  else if (currentTab === "track") html += renderTrack();
+  else if (currentTab === "reports") html += renderReports();
+  else if (currentTab === "more") html += renderMore();
+  document.getElementById("app").innerHTML = html;
+}
+
+render();
+</script>
+</body>
+</html>
